@@ -1,119 +1,268 @@
-# Shadow Detective
+# Shadow Detective – ROS Final Work (Part I + Part II)
 
-A noir detective game made with Python and pygame.
+**Robot Programming – Final Assignment.** Everything for the final submission is located in `<project_root>/`.
 
-You play a detective in purple. Walk through rainy cities, hotels, trains and a circus, find clues, question suspects and catch the culprit, all while dodging the obstacles that move around every room. There are five cases, and each one is harder than the last.
+Shadow Detective is a detective game controlled through **ROS1** nodes (Parts I and II) and connected to **ROS2** through `ros1_bridge` (Part II). ROS1 and ROS2 are built in two separate workspaces because `catkin` (ROS1) and `colcon` (ROS2) cannot build the same workspace.
 
 ---
 
-## Requirements
+## 1. Repository Structure
 
-| What | Version |
-|---|---|
-| Python | 3.8 or newer (tested with 3.9) |
-| pygame | 2.0 or newer (tested with 2.6.1) |
+| Folder / File | Content | Documentation |
+|---|---|---|
+| [`ros1_ws/`](ros1_ws) | **ROS1 (Noetic)**, catkin workspace.<br>**Part I:** nodes `info_user_node`, `game_node`, `control_node`, `result_game_node`; topics `/user_information` (custom `GameUserMsg`), `/keyboard_control`, `/result_information`.<br>**Part II:** services `/user_score` and `/difficulty`, parameters `user_name`, `change_player_color`, `screen_param`, launcher `robot_info.launch` | [`ros1_ws/README.md`](ros1_ws/README.md) |
+| [`ros2_ws/`](ros2_ws) | **ROS2 (Foxy)**, colcon workspace.<br>**Part II:** `ros1_bridge` for `/keyboard_control`, ROS2 package `robot_info2` with `robot_info2_node.py`, rosbag `robot_info2.bag`.<br>**EXTRA:** `robot_info_msgs` + bridge built from source | [`ros2_ws/README.md`](ros2_ws/README.md) |
+| [`start_game.sh`](start_game.sh) | **Starts the entire game (ROS1 + Bridge + ROS2) with one command** | Section 5 |
 
-Install pygame once:
+---
 
-```bash
-pip3 install pygame
+## 2. System Architecture & Communication Flow
+
+```text
+                     srv /difficulty (SetGameDifficulty)
+            ┌────────────────────────────────────────────────┐
+            │                                                ▼
+   ┌────────────────┐  /user_information (GameUserMsg)  ┌────────────────────────────────┐
+   │ info_user_node │ ────────────────────────────────▶ │           game_node            │
+   └────────────────┘ ──────────────┐                   │ phase1 Welcome → 2 Game → 3 Final│
+                                    │                   │ params: user_name,             │
+   ┌──────────────┐ /keyboard_control (std_msgs/String) │   change_player_color,         │
+   │ control_node │ ──────────────────────────────────▶ │   screen_param                 │
+   └──────────────┘          │                          │ services: /difficulty,         │
+                             │                          │           /user_score          │
+                             │                          └────────────────────────────────┘
+                             │                             │ /result_information   ▲
+                             │                             ▼ (std_msgs/Int64)      │ srv /user_score
+                             │                    ┌──────────────────┐             │ (GetUserScore)
+                             │                    │ result_game_node │ ────────────┘
+                             │                    └──────────────────┘ ◀── /user_information
+                             ▼
+                  ros1_bridge ──▶ ROS2 robot_info2_node (node: info_ros2_node)
+                                        └──▶ ros2 bag record ──▶ robot_info2.bag
 ```
 
-On Windows the command is usually `pip install pygame`.
+### ROS Interfaces Overview
 
-The game needs no other files, images or sounds, because everything is drawn in code.
+- **Topics:**
+  - `/user_information` (`robotinfo_msgs/GameUserMsg`, latched): Player's full name, username, and age (`info_user_node` → `game_node`, `result_game_node`).
+  - `/keyboard_control` (`std_msgs/String`): Key commands (`UP`, `DOWN`, `LEFT`, `RIGHT`, `INTERACT`, `CONFIRM`, `MENU`, `NOTEBOOK`, `CASE_FILE`, `ACCUSE`, `HELP`, `OPTION_1`..`9`, `EXIT`) sent from `control_node` to `game_node` and bridged to `robot_info2_node` in ROS2.
+  - `/result_information` (`std_msgs/Int64`, latched): Final score published by `game_node` to `result_game_node` (and bridged to ROS2).
+- **Services (offered by `game_node`):**
+  - `/difficulty` (`robotinfo_msgs/SetGameDifficulty`): Sets `"easy"`, `"medium"`, or `"hard"` (accepted in `phase1` only).
+  - `/user_score` (`robotinfo_msgs/GetUserScore`): Returns the user's final score as a percentage (`0–100`) of the maximum score (`10080`).
+- **Parameters (`/game_node/`):**
+  - `/game_node/user_name` (`string`): Player name, set when `/user_information` arrives.
+  - `/game_node/change_player_color` (`int`): Detective color (`1` Red, `2` Purple [default], `3` Blue) — updated live.
+  - `/game_node/screen_param` (`string`): Current game phase (`phase1`, `phase2`, `phase3`).
 
-## How to start
+---
 
-Open a terminal in the folder that contains `game.py` and run:
+## 3. Dependencies & Installation (Ubuntu 20.04)
+
+Tested environment: **Ubuntu 20.04** with **Python 3.8**, **ROS1 Noetic**, and **ROS2 Foxy**.
+
+### Complete Dependency List
+
+| Category | Packages / Tools |
+|---|---|
+| **System & Build Tools** | `curl`, `software-properties-common`, `xterm`, `python3-pip`, `python3-colcon-common-extensions` |
+| **Python Libraries** | `pygame>=2` *(must be installed via `pip3`, since the Ubuntu 20.04 apt version 1.9 is too old)* |
+| **ROS1 (Noetic)** | `ros-noetic-desktop` |
+| **ROS2 (Foxy) & Bridge** | `ros-foxy-ros-base`, `ros-foxy-ros1-bridge`, `ros-foxy-rosbag2`, `ros-foxy-ros2bag`, `ros-foxy-rosbag2-storage-default-plugins` |
+
+> **Important:** Do **not** add both `source /opt/ros/noetic/setup.bash` and `source /opt/ros/foxy/setup.bash` to `~/.bashrc`. The start script sources the exact environment required for each window.
+>
+> **Note:** ROS1 Noetic and ROS2 Foxy have reached EOL. If `apt` cannot locate the packages, use the ROS snapshot repositories (<http://snapshots.ros.org>) or the provided course virtual machine.
+
+### Step 3.1 – Install ROS1 Noetic & Game Dependencies
 
 ```bash
-python3 game.py
+sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
+sudo apt update
+sudo apt install -y curl
+curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
+sudo apt update
+sudo apt install -y ros-noetic-desktop python3-pip xterm
+pip3 install --user "pygame>=2"
 ```
 
-On Windows use `python game.py`. You can also open the file in Thonny, IDLE or VS Code and press **Run**.
+### Step 3.2 – Install ROS2 Foxy, `ros1_bridge` & `rosbag2`
+
+```bash
+sudo apt install -y software-properties-common curl
+sudo add-apt-repository universe
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+sudo apt update
+sudo apt install -y \
+  ros-foxy-ros-base \
+  ros-foxy-ros1-bridge \
+  ros-foxy-rosbag2 \
+  ros-foxy-ros2bag \
+  ros-foxy-rosbag2-storage-default-plugins \
+  python3-colcon-common-extensions
+```
 
 ---
 
-## Controls
+## 4. Build Workspaces
 
-| Key | Action |
-|---|---|
-| Arrow keys | Walk around |
-| Walk out at the left or right edge | Go through the door on that side |
-| SPACE | Examine things, talk to people, use doors |
-| 1 – 6 | Choose a question while talking |
-| N | Notebook (all clues you found) |
-| F | Case file (story, timeline, suspects) |
-| A | Accuse a suspect |
-| H | How to play |
-| Esc | Menu (resume, how to play, restart case, exit to title screen) |
-| Enter | Continue on the end screens |
-| X | Exit to the title screen from an end screen |
+Build each workspace once in a **separate, clean terminal** that only sources its respective ROS distribution.
 
-The mouse also works for the buttons and for choosing suspects and evidence.
+### Build ROS1 Workspace (Terminal with ROS1 only)
 
-## How to play
+```bash
+source /opt/ros/noetic/setup.bash
+cd <project_root>/ros1_ws
+catkin_make
+```
 
-1. **Read the case file.** It tells you what happened, what was stolen and who the suspects are.
-2. **Explore** the rooms and press SPACE next to objects to examine them. Clues go into your notebook. Some things are locked, so find the key or the code first.
-3. **Question the suspects.** New questions appear when you find new clues. Some people lie!
-4. **Watch out** for the obstacles that move through the rooms. Every bump costs points.
-5. **Accuse** (A) the culprit when you are sure, and pick the clues that prove it. Wrong accusations cost an attempt. If you run out of attempts, the culprit escapes.
+Verify generated custom messages and services:
 
-## The five cases
+```bash
+source devel/setup.bash
+rosmsg show robotinfo_msgs/GameUserMsg
+rossrv show robotinfo_msgs/GetUserScore
+rossrv show robotinfo_msgs/SetGameDifficulty
+```
 
-| # | Case | Story | Obstacles | Difficulty |
-|---|---|---|---|---|
-| 1 | The Museum Heist | A famous painting disappears from the city museum. | 1 floor polisher | 3 clues, 1 piece of evidence, 3 attempts, clues glow |
-| 2 | Blackout at Hotel Aurora | A diamond necklace is stolen during a blackout. | 2 luggage trolleys | 4 clues, 2 pieces of evidence, 3 attempts, faint glow |
-| 3 | The Stolen Formula | A secret battery formula vanishes from a manor in a thunderstorm. | 2 guard dogs | 5 clues, 3 pieces of evidence, 2 attempts, no glow |
-| 4 | Snowbound Express | A golden egg disappears from a train stuck in the snow. | 3 sliding suitcases | 6 clues, 3 pieces of evidence, 2 attempts, locked hatbox |
-| 5 | Circus of Shadows | Someone cut the trapeze rope on opening night. | 4 bouncing circus balls | 7 clues, 3 pieces of evidence, only 1 attempt, locked locker |
+### Build ROS2 Workspace (Terminal with ROS2 only)
 
-## Score
+```bash
+source /opt/ros/foxy/setup.bash
+cd <project_root>/ros2_ws
+colcon build
+```
 
-| Event | Points |
-|---|---|
-| New clue | +100 |
-| New question asked | +10 |
-| Case solved | +500, plus 100 for every attempt left |
-| Bumping into an obstacle | −50 |
-| Wrong accusation | −100 |
+*(To build only the ROS2 listener without the EXTRA custom interface package, run `colcon build --packages-select robot_info2`.)*
 
-Every case also gives up to 3 stars (3 = no mistakes). After the last case you get your final score and a rank: *Rookie Detective*, *Senior Inspector* or *Master Detective*. The high score is saved in `highscore.txt`.
+### Optional EXTRA – Build `ros1_bridge` from Source (Custom Types)
 
----
+The binary `ros-foxy-ros1-bridge` only supports standard ROS types. To bridge custom messages and services (`GameUserMsg`, `GetUserScore`, `SetGameDifficulty`), run the build script in a **new terminal** after both workspaces above have been built:
 
-## Project requirements
+```bash
+<project_root>/ros2_ws/build_bridge_from_source.sh
+```
 
-| Requirement | Where it is in the game |
-|---|---|
-| Welcome screen | Title screen with "PRESS ANY KEY TO START" |
-| Player control | Arrow keys to walk, SPACE to interact, number keys for questions |
-| Obstacles or enemies | Every case has its own obstacles that move by themselves (patrolling or bouncing) |
-| Collisions | Bumping into an obstacle costs 50 points and pushes the player back |
-| Score system | Points for clues, questions and solved cases; minus points for bumps and wrong accusations |
-| Current score | Always shown at the top left, with "+100" / "−50" popping up over the player |
-| End game screen | Final score, high score and buttons to play again or exit |
-| Increasing difficulty | More and faster obstacles, more clues needed, fewer attempts, no glowing clues; a `pygame.time.Clock` keeps 60 FPS |
-| Player visible in purple | The detective wears purple and stands on a glowing purple ring |
-| Size of the screen | Fixed with the constants `WIDTH, HEIGHT = 960, 600` |
+This builds `ros1_bridge` into `~/bridge_ws` (takes ~10–30 minutes). `start_game.sh` automatically detects and uses `~/bridge_ws` if present. Verify the bridged custom pairs with:
+
+```bash
+source /opt/ros/noetic/setup.bash && source <project_root>/ros1_ws/devel/setup.bash
+source /opt/ros/foxy/setup.bash && source <project_root>/ros2_ws/install/local_setup.bash
+source ~/bridge_ws/install/local_setup.bash
+ros2 run ros1_bridge dynamic_bridge --print-pairs | grep -i robot
+```
 
 ---
 
-### Inside `game.py`
+## 5. Running the Game
 
-1. **Settings**: screen size, speed, points and colours
-2. **Story data**: all five cases (`CASE_1` … `CASE_5`) with rooms, clues, suspects, dialogues, case files and obstacles
-3. **Drawing functions**: people, obstacles, intro scenes
-4. **`Game` class**: the game loop, input, rooms, notebook, accusing and all screens
+Start the entire system with a single command from `<project_root>/`:
 
-## Write your own case
+```bash
+cd <project_root>
+./start_game.sh
+```
 
-1. Copy one of the `CASE_…` dictionaries in the story data part and change the texts.
-2. Every room needs a drawing function called `draw_<name>` in the `Game` class (see `draw_hall` as an example).
-3. Add a `theme` (colours, floor, weather, obstacles) and a `story` (case file).
-4. Add your case to the list `CASES = [...]`.
+Optional overrides:
 
-The comments at the top of the story data part explain every setting.
+```bash
+# Set initial detective color (1 = Red, 2 = Purple, 3 = Blue)
+PLAYER_COLOR=1 ./start_game.sh
+
+# Specify custom workspace paths
+ROS1_WS=/path/to/ros1_ws ROS2_WS=/path/to/ros2_ws ./start_game.sh
+```
+
+The start terminal runs `roscore` (via `ros1_ws/src/robot_info/launch/robot_info.launch`) and `ros1_bridge` (`dynamic_bridge --bridge-all-topics`), and opens **five terminal windows** plus the **Pygame window**:
+
+| Window | Node | Role / Action |
+|---|---|---|
+| `1_game_node` | `game_node` (ROS1) | Game log; opens the **game window** and provides `/user_score` and `/difficulty` |
+| `2_info_user_node` | `info_user_node` (ROS1) | Enter full name, username, age, and difficulty (`easy` / `medium` / `hard`) |
+| `3_control_node_PLAY_HERE` | `control_node` (ROS1) | **Click into this window to play** (Arrow keys, `SPACE`, `ENTER`, `ESC`, `N/F/A/H`, `1–9`, `X`) |
+| `4_result_game_node` | `result_game_node` (ROS1) | Displays final score and percentage via `/user_score` |
+| `5_robot_info2_node` | `robot_info2_node` (ROS2) | Logs incoming `/keyboard_control` commands and final score in ROS2 |
+
+**Stopping:** Close the game window, press `X` on the final screen, or press `Ctrl+C` in the start terminal to cleanly stop all nodes, the bridge, and `roscore`.
+
+---
+
+## 6. Recording & Replaying the ROS2 Bag
+
+While the game is running, open a new terminal to record `/keyboard_control` from ROS2 (stop with `Ctrl+C`):
+
+```bash
+cd <project_root>/ros2_ws
+./record_bag.sh
+```
+
+This creates the bag directory `<project_root>/ros2_ws/robot_info2.bag/`. To inspect or replay the recorded commands:
+
+```bash
+source /opt/ros/foxy/setup.bash
+cd <project_root>/ros2_ws
+ros2 bag info robot_info2.bag
+ros2 bag play robot_info2.bag
+```
+
+---
+
+## 7. Quick CLI Reference (Services, Parameters & Debugging)
+
+### ROS1 Terminal
+
+```bash
+source /opt/ros/noetic/setup.bash
+source <project_root>/ros1_ws/devel/setup.bash
+
+# Services
+rosservice list
+rosservice call /difficulty "change_difficulty: 'hard'"
+rosservice call /user_score "username: 'ada_99'"
+
+# Parameters
+rosparam list /game_node
+rosparam get /game_node/screen_param
+rosparam get /game_node/user_name
+rosparam set /game_node/change_player_color 1
+
+# Debugging
+rosnode list
+rostopic list
+rostopic echo /keyboard_control
+rqt_graph
+```
+
+### ROS2 Terminal
+
+```bash
+source /opt/ros/foxy/setup.bash
+
+ros2 node list
+ros2 topic list
+ros2 topic echo /keyboard_control
+```
+
+---
+
+## 8. Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| `ROS1 workspace not built` / `ROS2 workspace not built` | Build both workspaces first (Section 4). |
+| `pygame 2.0 or newer is needed` | Run `pip3 install --user "pygame>=2"`. |
+| `xterm is missing` | Run `sudo apt install -y xterm`. |
+| Detective does not move | Click into window **`3_control_node_PLAY_HERE`**, not the Pygame window. |
+| `[rosrun] Couldn't find executable` | Run `chmod +x <project_root>/ros1_ws/src/robot_info/scripts/*.py` and rebuild with `catkin_make`. |
+| `robot_info2.bag already exists` | `ros2 bag` does not overwrite; delete or rename the existing folder before recording again. |
+| `failed to create 2to1 bridge` for `robotinfo_msgs` | Expected with the binary bridge; build the bridge from source for custom types (Section 4). |
+
+---
+
+## 9. Further Documentation
+
+For a detailed breakdown of setup, node internals, design rules, and troubleshooting instructions, please refer to the respective documentation in the workspace directories:
+
+- **ROS 1 Workspace:** [ros1_ws/README.md](ros1_ws/README.md)
+- **ROS 2 Workspace:** [ros2_ws/README.md](ros2_ws/README.md)
