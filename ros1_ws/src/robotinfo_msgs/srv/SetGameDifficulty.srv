@@ -1,0 +1,4 @@
+# Changes the difficulty: "easy", "medium" or "hard". Only accepted in phase1 (welcome screen).
+string change_difficulty
+---
+bool success

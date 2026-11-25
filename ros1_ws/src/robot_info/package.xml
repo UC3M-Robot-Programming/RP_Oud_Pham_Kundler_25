@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>robot_info</name>
+  <version>1.0.0</version>
+  <description>Shadow Detective: a detective game controlled through ROS1 nodes (topics, services /user_score and /difficulty, parameters, launcher).</description>
+
+  <maintainer email="kundlerferdinand@gmail.com">Ferdinand Kundler</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>rospy</depend>
+  <depend>std_msgs</depend>
+  <depend>robotinfo_msgs</depend>
+
+  <!-- pygame 2 is installed with pip (the apt package of Ubuntu 20.04 is too old), see README.md -->
+</package>

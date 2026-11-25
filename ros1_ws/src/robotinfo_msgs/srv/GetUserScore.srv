@@ -1,0 +1,4 @@
+# Asks game_node for the score of a user as a percentage (0-100) of the maximum possible score
+string username
+---
+int64 score

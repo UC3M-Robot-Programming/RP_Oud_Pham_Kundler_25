@@ -1,0 +1,36 @@
+<launch>
+  <!--
+    Starts the complete Shadow Detective game in ROS1 (roscore + all four ROS1 nodes).
+    Normally you do not call this file yourself: ros_final_work/start_game.sh starts it
+    together with ros1_bridge and the ROS2 node.
+
+    Every node runs in its OWN terminal window (xterm, numbered 1-4), so you can see and use
+    each node, and game_node opens the game window:
+      1_game_node            log of the game, opens the game window
+      2_info_user_node       type full name, username, age and difficulty here
+      3_control_node_PLAY_HERE  keep this window selected and play with the arrow keys
+      4_result_game_node     shows the final result with the percentage
+
+    The colour of the detective can be chosen at start (1 Red, 2 Purple, 3 Blue) with
+    player_color:=3 and changed while playing with
+      rosparam set /game_node/change_player_color 1
+  -->
+  <arg name="player_color" default="2" />
+  <arg name="term" default="xterm -fa Monospace -fs 10" />
+
+  <!-- required: closing the game (or quitting on the final screen) stops all nodes -->
+  <node pkg="robot_info" type="game_node.py" name="game_node" output="screen" required="true"
+        launch-prefix="$(arg term) -T 1_game_node -geometry 92x16+0+0 -e">
+    <!-- private parameter /game_node/change_player_color; user_name and screen_param are created by the node -->
+    <param name="change_player_color" type="int" value="$(arg player_color)" />
+  </node>
+
+  <node pkg="robot_info" type="info_user_node.py" name="info_user_node" output="screen"
+        launch-prefix="$(arg term) -T 2_info_user_node -geometry 92x16+0+330 -e" />
+
+  <node pkg="robot_info" type="control_node.py" name="control_node" output="screen"
+        launch-prefix="$(arg term) -T 3_control_node_PLAY_HERE -geometry 92x16+0+660 -e" />
+
+  <node pkg="robot_info" type="result_game_node.py" name="result_game_node" output="screen"
+        launch-prefix="$(arg term) -T 4_result_game_node -geometry 92x22-0+0 -e" />
+</launch>
